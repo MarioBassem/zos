@@ -3,6 +3,7 @@ package provisiond
 import (
 	"context"
 	"crypto/ed25519"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -60,6 +61,10 @@ var Module cli.Command = cli.Command{
 			Usage: "http listen address",
 			Value: ":2021",
 		},
+		&cli.BoolFlag{
+			Name:  "stats",
+			Usage: "print theoretical reserved capacity",
+		},
 	},
 	Action: action,
 }
@@ -68,6 +73,7 @@ func action(cli *cli.Context) error {
 	var (
 		msgBrokerCon string = cli.String("broker")
 		rootDir      string = cli.String("root")
+		printStats   bool   = cli.Bool("stats")
 	)
 
 	ctx := context.Background()
@@ -75,7 +81,7 @@ func action(cli *cli.Context) error {
 
 	// keep checking if limited-cache flag is set
 	if app.CheckFlag(app.LimitedCache) {
-		log.Error().Msg("failed cache reservation! Retrying every 30 seconds...")
+		log.Error().Msg("node has no cache! Retrying every 30 seconds...")
 		for app.CheckFlag(app.LimitedCache) {
 			time.Sleep(time.Second * 30)
 		}
@@ -164,8 +170,9 @@ func action(cli *cli.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to get node reserved capacity")
 	}
+	var rep = storage.NullReporter
 	var current gridtypes.Capacity
-	if !app.IsFirstBoot(serverName) {
+	if !app.IsFirstBoot(serverName) || printStats {
 		// if this is the first boot of this module.
 		// it means the provision engine will still
 		// rerun all deployments, which means we don't need
@@ -173,13 +180,15 @@ func action(cli *cli.Context) error {
 		// since the counters will get populated anyway.
 		// but if not, we need to set the current counters
 		// from store.
-		current, err = store.Capacity()
+		if printStats {
+			rep = storage.ConsoleReporter
+		}
+		current, err = store.Capacity(rep)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to compute current consumed capacity")
 		}
 	}
 
-	log.Debug().Msgf("current used capacity: %+v", current)
 	// statistics collects information about workload statistics
 	// also does some checks on capacity
 	statistics := primitives.NewStatistics(
@@ -188,6 +197,15 @@ func action(cli *cli.Context) error {
 		reserved,
 		provisioners,
 	)
+
+	if printStats {
+		fmt.Printf("Node: %+v\n", reserved)
+		fmt.Printf("Reserved: %+v\n", current)
+		fmt.Printf("Used: %+v\n", statistics.Current())
+		return nil
+	}
+
+	log.Debug().Msgf("current used capacity: %+v", current)
 
 	if err := primitives.NewStatisticsMessageBus(zosRouter, statistics); err != nil {
 		return errors.Wrap(err, "failed to create statistics api")

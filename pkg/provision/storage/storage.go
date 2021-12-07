@@ -223,7 +223,11 @@ func (s *Fs) twins() ([]uint32, error) {
 
 // Capacity returns the total capacity of all deployments
 // that are in OK state.
-func (s *Fs) Capacity() (cap gridtypes.Capacity, err error) {
+func (s *Fs) Capacity(reporter Reporter) (cap gridtypes.Capacity, err error) {
+	if reporter == nil {
+		reporter = NullReporter
+	}
+
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -233,12 +237,15 @@ func (s *Fs) Capacity() (cap gridtypes.Capacity, err error) {
 	}
 
 	for _, twin := range twins {
+		reporter.Twin(twin)
+
 		ids, err := s.byTwin(twin)
 		if err != nil {
 			return cap, err
 		}
 
 		for _, id := range ids {
+			reporter.Contract(id)
 			p := s.rooted(fmt.Sprint(twin), fmt.Sprint(id))
 			deployment, err := s.get(p)
 			if err != nil {
@@ -249,6 +256,7 @@ func (s *Fs) Capacity() (cap gridtypes.Capacity, err error) {
 				if wl.Result.State != gridtypes.StateOk {
 					continue
 				}
+				reporter.Workload(&wl)
 
 				c, err := wl.Capacity()
 				if err != nil {
@@ -266,4 +274,36 @@ func (s *Fs) Capacity() (cap gridtypes.Capacity, err error) {
 // Close makes sure the backend of the store is closed properly
 func (s *Fs) Close() error {
 	return nil
+}
+
+type Reporter interface {
+	Twin(twin uint32)
+	Contract(contract uint64)
+	Workload(wl *gridtypes.Workload)
+}
+
+var NullReporter Reporter = (*nullReporter)(nil)
+var ConsoleReporter Reporter = (*consoleReporter)(nil)
+
+//var ConsoleReporter Reporter = ()
+type nullReporter struct{}
+
+func (*nullReporter) Twin(_ uint32)                  {}
+func (*nullReporter) Contract(_ uint64)              {}
+func (*nullReporter) Workload(_ *gridtypes.Workload) {}
+
+type consoleReporter struct{}
+
+func (*consoleReporter) Twin(t uint32) {
+	fmt.Printf("Twin (%d)\n", t)
+}
+
+func (*consoleReporter) Contract(c uint64) {
+	fmt.Printf(" - Contract (%d)\n", c)
+}
+
+func (*consoleReporter) Workload(w *gridtypes.Workload) {
+	cap, _ := w.Capacity()
+	fmt.Printf("   - Name (%s) (%s)\n     State: %s\n     Cap: %+v\n",
+		w.Name, w.Type, w.Result.State, cap)
 }
