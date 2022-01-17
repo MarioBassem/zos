@@ -31,6 +31,31 @@ type MigrationStorage struct {
 	unsafe BoltStorage
 }
 
+// Migrate deployment creates an exact copy of dl in this storage.
+// usually used to copy deployment from older storage
+func (b *MigrationStorage) Migrate(dl gridtypes.Deployment) error {
+	err := b.unsafe.Create(dl)
+	if errors.Is(err, provision.ErrDeploymentExists) {
+		log.Debug().Uint32("twin", dl.TwinID).Uint64("deployment", dl.ContractID).Msg("deployment already migrated")
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	for _, wl := range dl.Workloads {
+		if err := b.unsafe.Transaction(dl.TwinID, dl.ContractID, wl); err != nil {
+			return err
+		}
+		if wl.Result.State == gridtypes.StateDeleted {
+			if err := b.unsafe.Remove(dl.TwinID, dl.ContractID, wl.Name); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 type BoltStorage struct {
 	db     *bolt.DB
 	unsafe bool
@@ -154,31 +179,6 @@ func (b *BoltStorage) Update(twin uint32, deployment uint64, field ...provision.
 
 		return nil
 	})
-}
-
-// Migrate deployment creates an exact copy of dl in this storage.
-// usually used to copy deployment from older storage
-func (b *MigrationStorage) Migrate(dl gridtypes.Deployment) error {
-	err := b.unsafe.Create(dl)
-	if errors.Is(err, provision.ErrDeploymentExists) {
-		log.Debug().Uint32("twin", dl.TwinID).Uint64("deployment", dl.ContractID).Msg("deployment already migrated")
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	for _, wl := range dl.Workloads {
-		if err := b.unsafe.Transaction(dl.TwinID, dl.ContractID, wl); err != nil {
-			return err
-		}
-		if wl.Result.State == gridtypes.StateDeleted {
-			if err := b.unsafe.Remove(dl.TwinID, dl.ContractID, wl.Name); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func (b *BoltStorage) Delete(twin uint32, deployment uint64) error {

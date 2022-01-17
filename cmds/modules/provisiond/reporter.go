@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v3/types"
-	"github.com/joncrlsn/dque"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/threefoldtech/substrate-client"
@@ -18,6 +17,7 @@ import (
 	"github.com/threefoldtech/zos/pkg"
 	"github.com/threefoldtech/zos/pkg/environment"
 	"github.com/threefoldtech/zos/pkg/gridtypes"
+	"github.com/threefoldtech/zos/pkg/pqueue"
 	"github.com/threefoldtech/zos/pkg/provision"
 	"github.com/threefoldtech/zos/pkg/stubs"
 )
@@ -76,12 +76,8 @@ type Reporter struct {
 	nodeID    uint32
 	identity  substrate.Identity
 	engine    provision.Engine
-	queue     *dque.DQue
+	queue     *pqueue.Queue
 	substrate *substrate.Substrate
-}
-
-func reportBuilder() interface{} {
-	return &Report{}
 }
 
 // NewReporter creates a new capacity reporter
@@ -95,10 +91,10 @@ func NewReporter(engine provision.Engine, nodeID uint32, cl zbus.Client, root st
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create substrate client")
 	}
-	const queueName = "consumption"
-	var queue *dque.DQue
+	const queueName = "consumption.queue"
+	var queue *pqueue.Queue
 	for i := 0; i < 3; i++ {
-		queue, err = dque.NewOrOpen(queueName, root, 1024, reportBuilder)
+		queue, err = pqueue.New(filepath.Join(root, queueName), Report{})
 		if err != nil {
 			os.RemoveAll(filepath.Join(root, queueName))
 			continue
@@ -128,12 +124,12 @@ func NewReporter(engine provision.Engine, nodeID uint32, cl zbus.Client, root st
 }
 
 func (r *Reporter) pushOne() ([]Consumption, error) {
-	item, err := r.queue.PeekBlock()
+	item, err := r.queue.Peek()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to peek into capacity queue. #properlyfatal")
 	}
 
-	report := item.(*Report)
+	report := item.(Report)
 
 	log.Info().Int("len", len(report.Consumption)).Msgf("sending capacity report")
 
@@ -151,7 +147,7 @@ func (r *Reporter) pushOne() ([]Consumption, error) {
 
 	// only removed if report is reported to substrate
 	// remove item from queue
-	_, err = r.queue.Dequeue()
+	_, err = r.queue.Pop()
 
 	return report.Consumption, err
 }
@@ -179,7 +175,12 @@ func (r *Reporter) pusher(ctx context.Context) {
 		}
 
 		log.Debug().Msg("capacity report pushed to chain")
-		if r.queue.Size() == 0 {
+		size, err := r.queue.Size()
+		if err != nil {
+			log.Error().Err(err).Msg("failed to check queue size")
+		}
+
+		if size == 0 {
 			// we only synchronize once ALL queued reports are pushed.
 			if err := r.synchronize(ctx, reported); err != nil {
 				log.Error().Err(err).Msg("failed to synchronize active contracts")
@@ -333,7 +334,8 @@ func (r *Reporter) push(report Report) error {
 	if len(report.Consumption) == 0 {
 		return nil
 	}
-	return r.queue.Enqueue(&report)
+
+	return r.queue.Push(report)
 }
 
 func (r *Reporter) user(since time.Time, user uint32, vmMetrics pkg.MachineMetrics, gwMetrics pkg.GatewayMetrics, qsfsMetrics pkg.QSFSMetrics) ([]Consumption, error) {
