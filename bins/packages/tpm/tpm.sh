@@ -19,10 +19,28 @@ extract_tss() {
 
 prepare_tss() {
     echo "[+] preparing tpm-tss"
-    apt-get -y install build-essential
-    apt-get -y install libjson-c-dev
-    apt-get -y install libcurl4-nss-dev
-    apt-get -y install libssl-dev
+    apt -y update
+    apt -y install \
+    autoconf-archive \
+    libcmocka0 \
+    libcmocka-dev \
+    procps \
+    iproute2 \
+    build-essential \
+    git \
+    pkg-config \
+    gcc \
+    libtool \
+    automake \
+    libssl-dev \
+    uthash-dev \
+    autoconf \
+    doxygen \
+    libjson-c-dev \
+    libini-config-dev \
+    libcurl4-openssl-dev \
+    libltdl-dev
+
     ./configure --prefix=/usr 
 }
 
