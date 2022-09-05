@@ -19,8 +19,8 @@ extract_tss() {
 
 prepare_tss() {
     echo "[+] preparing tpm-tss"
-    apt-get install libjson-c-dev
-    apt-get install libcurl4-nss-dev
+    apt-get -y install libjson-c-dev
+    apt-get -y install libcurl4-nss-dev
     ./configure --prefix=/usr 
 }
 
