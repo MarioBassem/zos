@@ -19,6 +19,7 @@ extract_tss() {
 
 prepare_tss() {
     echo "[+] preparing tpm-tss"
+    apt-get -y install build-essential
     apt-get -y install libjson-c-dev
     apt-get -y install libcurl4-nss-dev
     ./configure --prefix=/usr 
