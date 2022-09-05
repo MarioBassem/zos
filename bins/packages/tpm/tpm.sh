@@ -22,6 +22,7 @@ prepare_tss() {
     apt-get -y install build-essential
     apt-get -y install libjson-c-dev
     apt-get -y install libcurl4-nss-dev
+    apt-get -y install libssl-dev
     ./configure --prefix=/usr 
 }
 
