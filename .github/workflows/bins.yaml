@@ -8,7 +8,9 @@ on:
     paths:
       - "bins/**"
       - ".github/workflows/bins.yaml"
-      - ".github/workflows/bins-package.yaml"
+      - ".github/workflows/bin-package.yaml"
+      - ".github/workflows/bin-package-18.04.yaml"
+      
 
 jobs:
   containerd:
@@ -101,3 +103,10 @@ jobs:
       package: node-exporter
     secrets:
       token: ${{ secrets.HUB_JWT }}
+  tpm:
+    uses: ./.github/workflows/bin-package-18.04.yaml
+    with:
+      package: tpm
+    secrets:
+      token: ${{ secrets.HUB_JWT }}
+
